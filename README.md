@@ -6,7 +6,6 @@
 - Jin, Hannah
 
 ## Abstract 
-
 We will be addressing the problem of better understanding the factors that influence Middlebury Men's Basketball effective field goal percentage. Using both box scores and parsed play by play data, we will construct 2 different models that a) classify the most optimal lineups for effective feild goal percentage b) create a regression model (with lasso regularization) to identify the most influential features in terms of efective field goal percentage. For evaluating the classifier, we will have a randomly grouped lineup baseline. For the regression model we will split the data into training (70%) and testing (30%) and evaluating using visualizations and accuracy. 
 
 
@@ -16,6 +15,12 @@ We are motivated by the idea that basketball produces rich performance data, but
 Our main question is:
 Can we predict which combination of Middlebury team players are most likely to perform unusually well against opponents, and summarize those predictions in a way that is genuinely useful for self-scouting?
 
+
+## Planned Deliverables
+Our planned deliverables will be similar to most projects:
+- A python package containing the code for both i) the two models mentioned in the abstract and ii) the code for the subsequent analysis of those models. 
+- An jupyter notebook file that demonstrates the use of these models on Middlebury Men’s basketball data/NESCAQ basketball data. 
+- We will share the data we gather from the internet. Code that cleans our data will also be provided in a separate jupyter notebook with text explaining out methods. 
 
 ## Resources Required 
 We expect to use a combination of the following data sources:
@@ -33,6 +38,18 @@ This project is valuable because it sits at the intersection of machine learning
 
 ## Risk Statement 
 Division III basketball play-by-play data is manually recorded, making it prone to inconsistencies despite standardized procedures. These variations present significant parsing challenges that have, in the past, created challenges in extracting consistent insights from the play-by-play data. While the data is easily accessible, developing an efficient pipeline to collect and format it for machine learning remains our primary hurdle.
+
+## Planned Deliverables: 
+Our planned deliverables will be similar to most projects:
+- A python package containing the code for both i) the two models mentioned in the abstract and ii) the code for the subsequent analysis of those models. 
+- An jupyter notebook file that demonstrates the use of these models on Middlebury Men’s basketball data/NESCAQ basketball data. 
+- I would also like to mention that we will share the data we gather from the internet. Code that cleans our data will also be provided in a separate jupyter notebook with text explaining out methods. 
+
+## Tentative Timeline: 
+By the week ten check in we want to be done with the problem of data and starting to explore models. By the week twelve check in we should have working models, be analyzing them, and essentially just tightening up the deliverables as a whole. 
+
+*Also:* See attached folder, "schedulingMaterials". It is has when2meet data and an initial schedule. The schedule principally consists of checking in on Thursdays, Fridays, and Sundays, though is subject to change. Finals week scheduling is dependent on where we are at with our deliverables. 
+
 
 
 ## Ethics
