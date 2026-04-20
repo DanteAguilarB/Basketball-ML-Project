@@ -1,0 +1,51 @@
+# READ ME -----------------------------------------------------------------
+
+# ================================================================
+# Author: Hannah Jin
+
+# PREFACE: This data guide interprets basketball analytics metrics, focusing on the Middlebury vs. Skidmore game. It covers box score metrics, play-by-play interpretation, advanced metrics, and the Four Factors of Basketball Success.
+# Source: https://athletics.middlebury.edu/sports/mens-basketball/stats/2025-26/skidmore-college/boxscore/15613 
+# ================================================================
+
+
+### 1. Box Score Metrics (The Standard Stat Sheet)
+The box score provides a snapshot of individual and team performance over the course of the game.
+
+*   **MIN (Minutes):** The total time a player was on the court. In this DIII game, starters like Ramey and Witherington played over 30 minutes, while bench players provided relief.
+*   **FG (Field Goals):** Expressed as **Made-Attempted** (e.g., 29-67). It includes all two-point and three-point shots.
+*   **3PT (Three-Pointers):** Specifically tracks shots from beyond the 6.75-meter arc.
+*   **FT (Free Throws):** Shots taken from the "charity stripe" following fouls. Skidmore’s efficiency here (25-34) was a major factor in their 91-87 victory.
+*   **ORB / DRB / REB (Rebounds):** **Offensive Rebounds** (ORB) lead to "second chance" opportunities. **Defensive Rebounds** (DRB) end an opponent's possession. **REB** is the total of both.
+*   **PF (Personal Fouls):** The number of infractions a player committed. If a player reaches the limit (usually 5 in college), they are disqualified.
+*   **A (Assists):** Passes that lead directly to a made basket.
+*   **TO (Turnovers):** Instances where a team loses possession of the ball without taking a shot, such as a bad pass or a steal by the opponent.
+*   **BLK (Blocks):** When a defensive player legally swats away a field goal attempt.
+*   **STL (Steals):** When a defensive player takes the ball away from the offensive team.
+*   **PTS (Points):** Total scoring output. Middlebury's bench contributed a significant **48 points** in this specific matchup.
+
+### 2. Play-By-Play Interpretation (The Event Log)
+The play-by-play is a chronological record of every "event" on the floor. It is the "messy" data used to reconstruct the game's flow.
+
+*   **Time Remaining:** The game clock at the moment of the event.
+*   **Play Team Indicator:** Identifies which team (MID or SKD) initiated the action.
+*   **Sub Out / Sub In:** Tracks the exact moments of **lineup changes**. Analysts use this to perform **lineup reconstruction**, determining which combinations of players are most effective.
+*   **Rebound Deadb (Deadball Rebound):** Often occurs after the first of two free throws or when the ball goes out of bounds without a clear individual rebound.
+*   **Assists/Blocks (Sub-descriptions):** These are secondary events tied to a primary shot or miss (e.g., "ASSIST by FLAKS, EVAN" immediately following a "GOOD 3PTR").
+
+### 3. Play Analysis & Advanced Metrics (The Strategy Layer)
+This section of the report explains **how possessions are converted**, which is the core of modern basketball analysis.
+
+*   **eFG% (Effective Field Goal Percentage):** While not listed as a raw column in the basic box score, it is the most critical metric for modern coaching. It adjusts standard field goal percentage to account for the fact that **a made 3-pointer is worth 50% more than a 2-pointer**.
+*   **Points in the Paint:** Scoring that occurs in the rectangular area directly under the basket. Middlebury outscored Skidmore 28-24 in this area.
+*   **Points off Turnovers:** Points scored on possessions immediately following an opponent's turnover. Both teams scored 8 points in this category.
+*   **2nd Chance Points:** Points scored following an offensive rebound. Middlebury excelled here with **18 points** compared to Skidmore’s 6.
+*   **Fast Break Points:** Points scored in transition before the defense can set up. In this game, transition scoring was nearly non-existent (0 for Middlebury, 2 for Skidmore).
+*   **Bench Points:** Total points scored by players who did not start the game. Middlebury’s bench was highly productive, contributing **55% of their total points**.
+*   **Lead Changed / Scores Tied:** Measures the competitiveness and "swing" of the game. This matchup saw **12 lead changes** and 6 ties, indicating a highly contested game.
+
+### 4. Advanced "Four Factors" Context
+Beyond the website's basic display, professional analysts use the data above to calculate the **Four Factors of Basketball Success**:
+1.  **Effective Field Goal Percentage (eFG%):** Shot making and spacing.
+2.  **Turnover Ratio:** Possession security.
+3.  **Offensive Rebound Percentage:** Ability to get extra chances.
+4.  **Free Throw Attempt Rate:** Ability to draw fouls and get "easy" points.
