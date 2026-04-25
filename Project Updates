@@ -1,0 +1,18 @@
+-----
+READ ME
+-----
+1. Your group members.: Aguilar, Dante; Grossman, Charlie; Jin, Hannah
+2. The URL of your GitHub repository so that we can check it out.: https://github.com/DanteAguilarB/Basketball-ML-Project
+3. The “thing that works” this week.
+4. A brief description of how that thing fits into the bigger picture of the project.
+5. A brief description of how you contributed to that thing.
+Note: from our perspective (and for grading purposes), your contributions must be reflected as commits in the GitHub repository. If the relevant code appears as a commit under someone else’s name, we can’t consider it to be part of your contribution.
+Note: It’s ok for multiple members of your group to submit the same “thing that works” for the update, if you all made contributions to it.
+
+
+-----
+Project Update 2 (April 25)
+-----
+3. Data guideline and cleaning
+4. Data guideline helps non-technical audience to understand jargons in basketball analytics; data cleaning helps set the preparation stage for later model training.
+5. Dante works on player-by-player data cleaning; Charlie works on box score data cleaning; Hannah works on data guideline and supports box score data cleaning.
