@@ -1,0 +1,581 @@
+# ==========================================================
+# READ ME
+# ==========================================================
+This final version keeps the original custom preprocessing and custom K-Means baseline, then makes the model more complex with the professor's suggested ideas:
+
+1. **Gaussian Mixture Model (GMM):** probabilistic clustering with soft membership probabilities.
+2. **PyTorch gradient-based model:** an unsupervised autoencoder trained with gradient descent.
+3. **Unsupervised learning workflow:** no target variable is used; clusters are evaluated with internal metrics and basketball feature profiles.
+
+The recommended final model is the **PyTorch autoencoder + GMM on latent features**, because it learns a compressed representation first and then clusters that learned representation probabilistically.
+
+
+# ==========================================================
+# 1. Imports and reproducibility
+# ==========================================================
+import os
+import random
+import warnings
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from IPython.display import display
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score, davies_bouldin_score
+
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
+warnings.filterwarnings("ignore")
+
+RANDOM_STATE = 42
+np.random.seed(RANDOM_STATE)
+random.seed(RANDOM_STATE)
+torch.manual_seed(RANDOM_STATE)
+# Keep training responsive in notebook/Colab environments.
+torch.set_num_threads(1)
+
+print("Libraries loaded successfully.")
+print("PyTorch version:", torch.__version__)
+
+
+# ==========================================================
+# 2. Load the basketball dataset
+# ==========================================================
+# Original notebook source:
+github_csv_url = "https://raw.githubusercontent.com/DanteAguilarB/Basketball-ML-Project/main/game_statistics_export.csv"
+
+# Optional fallback: place the CSV in the same folder as this notebook if the URL is unavailable.
+local_csv_path = "game_statistics_export.csv"
+
+try:
+    from urllib.request import urlopen
+    with urlopen(github_csv_url, timeout=15) as response:
+        df = pd.read_csv(response)
+    print("CSV file loaded successfully from GitHub.")
+except Exception as github_error:
+    print("GitHub load failed:", github_error)
+    if os.path.exists(local_csv_path):
+        df = pd.read_csv(local_csv_path)
+        print("CSV file loaded successfully from local file.")
+    else:
+        raise FileNotFoundError(
+            "Could not load the dataset from GitHub or a local CSV. "
+            "Download game_statistics_export.csv and place it beside this notebook."
+        )
+
+print("Dataset shape:", df.shape)
+display(df.head())
+
+
+# ==========================================================
+# 3. Original custom preprocessing and K-Means classes
+#    Slightly cleaned so they are safer and reusable.
+# ==========================================================
+class CustomStandardScaler:
+    """Custom implementation of standard scaling: z = (x - mean) / std."""
+    def __init__(self):
+        self.mean_ = None
+        self.scale_ = None
+
+    def fit(self, X):
+        X = np.asarray(X, dtype=float)
+        self.mean_ = np.mean(X, axis=0)
+        self.scale_ = np.std(X, axis=0)
+        self.scale_[self.scale_ == 0] = 1.0
+        return self
+
+    def transform(self, X):
+        if self.mean_ is None or self.scale_ is None:
+            raise RuntimeError("Scaler has not been fitted yet. Call .fit() first.")
+        X = np.asarray(X, dtype=float)
+        return (X - self.mean_) / self.scale_
+
+    def fit_transform(self, X):
+        return self.fit(X).transform(X)
+
+    def inverse_transform(self, X_scaled):
+        if self.mean_ is None or self.scale_ is None:
+            raise RuntimeError("Scaler has not been fitted yet. Call .fit() first.")
+        X_scaled = np.asarray(X_scaled, dtype=float)
+        return (X_scaled * self.scale_) + self.mean_
+
+
+class DataPrepPipeline:
+    """Simple preprocessing pipeline using the custom scaler."""
+    def __init__(self):
+        self.scaler = CustomStandardScaler()
+
+    def fit_transform(self, X):
+        return self.scaler.fit_transform(X)
+
+    def transform(self, X):
+        return self.scaler.transform(X)
+
+    def inverse_transform(self, X_scaled):
+        return self.scaler.inverse_transform(X_scaled)
+
+
+class CustomKMeans:
+    """Custom implementation of K-Means clustering."""
+    def __init__(self, n_clusters=4, max_iter=300, tol=1e-6, random_state=None):
+        self.n_clusters = n_clusters
+        self.max_iter = max_iter
+        self.tol = tol
+        self.random_state = random_state
+        self.centroids = None
+        self.inertia_ = None
+        self.n_iter_ = 0
+        self.rng = np.random.default_rng(random_state)
+
+    def _initialize_centroids(self, X):
+        if X.shape[0] < self.n_clusters:
+            raise ValueError("n_clusters cannot be larger than the number of rows in X.")
+        indices = self.rng.choice(X.shape[0], self.n_clusters, replace=False)
+        return X[indices].copy()
+
+    def _assign_clusters(self, X, centroids):
+        # Vectorized squared Euclidean distances: rows=samples, columns=clusters
+        distances = ((X[:, None, :] - centroids[None, :, :]) ** 2).sum(axis=2)
+        return np.argmin(distances, axis=1)
+
+    def _update_centroids(self, X, assignments):
+        new_centroids = np.zeros((self.n_clusters, X.shape[1]))
+        for cluster_id in range(self.n_clusters):
+            points = X[assignments == cluster_id]
+            if len(points) > 0:
+                new_centroids[cluster_id] = points.mean(axis=0)
+            else:
+                # If a cluster becomes empty, re-seed it with a random data point.
+                new_centroids[cluster_id] = X[self.rng.integers(0, X.shape[0])]
+        return new_centroids
+
+    def fit(self, X):
+        X = np.asarray(X, dtype=float)
+        self.centroids = self._initialize_centroids(X)
+
+        for iteration in range(1, self.max_iter + 1):
+            assignments = self._assign_clusters(X, self.centroids)
+            new_centroids = self._update_centroids(X, assignments)
+            shift = np.linalg.norm(new_centroids - self.centroids)
+            self.centroids = new_centroids
+            self.n_iter_ = iteration
+            if shift < self.tol:
+                break
+
+        assignments = self._assign_clusters(X, self.centroids)
+        self.inertia_ = ((X - self.centroids[assignments]) ** 2).sum()
+        return self
+
+    def predict(self, X):
+        if self.centroids is None:
+            raise RuntimeError("KMeans model has not been fitted yet. Call .fit() first.")
+        X = np.asarray(X, dtype=float)
+        return self._assign_clusters(X, self.centroids)
+
+    def fit_predict(self, X):
+        return self.fit(X).predict(X)
+
+
+print("CustomStandardScaler, DataPrepPipeline, and CustomKMeans are ready.")
+
+
+# ==========================================================
+# 4. Select unsupervised playstyle features and clean the data
+# ==========================================================
+features = ["pace", "fg_percentage", "tov_percentage", "ft_rate", "off_efficiency"]
+
+missing_features = [col for col in features if col not in df.columns]
+if missing_features:
+    raise ValueError(f"These required feature columns are missing from df: {missing_features}")
+
+cluster_data = df.copy()
+
+# Force feature columns to numeric in case the CSV stores any values as strings.
+for col in features:
+    cluster_data[col] = pd.to_numeric(cluster_data[col], errors="coerce")
+
+cluster_data = cluster_data.dropna(subset=features).reset_index(drop=True)
+
+if cluster_data.empty:
+    raise ValueError("No usable rows remain after dropping missing feature values.")
+
+pipeline = DataPrepPipeline()
+X_scaled = pipeline.fit_transform(cluster_data[features].values)
+
+print("Rows used for unsupervised clustering:", len(cluster_data))
+print("Feature matrix shape:", X_scaled.shape)
+display(cluster_data[features].describe().T)
+
+
+# ==========================================================
+# 5. Baseline: original custom K-Means model
+# ==========================================================
+N_CLUSTERS_BASELINE = 4
+
+kmeans_custom = CustomKMeans(n_clusters=N_CLUSTERS_BASELINE, random_state=RANDOM_STATE)
+cluster_data["style_cluster_kmeans"] = kmeans_custom.fit_predict(X_scaled)
+
+print("Custom K-Means clustering complete.")
+print("K-Means iterations:", kmeans_custom.n_iter_)
+print("K-Means inertia:", round(kmeans_custom.inertia_, 4))
+
+display(cluster_data[[c for c in ["team_name", "game_date", "style_cluster_kmeans"] if c in cluster_data.columns]].head())
+
+
+# ==========================================================
+# 6. More complex model #1: Gaussian Mixture Model (GMM)
+# ==========================================================
+# Why this is more complex than K-Means:
+# - K-Means gives hard cluster labels only.
+# - GMM models each cluster as a Gaussian distribution.
+# - GMM gives soft probabilities, so we can measure confidence/ambiguity.
+
+
+def select_best_gmm(X, component_range=range(2, 6), covariance_type="diag", random_state=42):
+    """Fit several GMMs and pick the model with the lowest BIC."""
+    X = np.asarray(X, dtype=float)
+    max_components = min(max(component_range), X.shape[0] - 1)
+    component_range = [k for k in component_range if 1 < k <= max_components]
+    if not component_range:
+        raise ValueError("Not enough rows to fit a GMM with at least 2 components.")
+
+    records = []
+    fitted_models = {}
+
+    for k in component_range:
+        gmm = GaussianMixture(
+            n_components=k,
+            covariance_type=covariance_type,
+            random_state=random_state,
+            n_init=1,
+            max_iter=100,
+            reg_covar=1e-4,
+        )
+        gmm.fit(X)
+        records.append({
+            "n_components": k,
+            "bic": gmm.bic(X),
+            "aic": gmm.aic(X),
+            "converged": gmm.converged_,
+            "iterations": gmm.n_iter_,
+        })
+        fitted_models[k] = gmm
+
+    scores = pd.DataFrame(records).sort_values("bic").reset_index(drop=True)
+    best_k = int(scores.loc[0, "n_components"])
+    return fitted_models[best_k], scores
+
+
+gmm_model, gmm_scores = select_best_gmm(X_scaled, component_range=range(2, 6), random_state=RANDOM_STATE)
+
+gmm_labels = gmm_model.predict(X_scaled)
+gmm_probabilities = gmm_model.predict_proba(X_scaled)
+cluster_data["style_cluster_gmm"] = gmm_labels
+cluster_data["style_confidence_gmm"] = gmm_probabilities.max(axis=1)
+
+print("Best GMM component count by BIC:", gmm_model.n_components)
+print("Average GMM confidence:", round(cluster_data["style_confidence_gmm"].mean(), 4))
+display(gmm_scores)
+display(cluster_data[[c for c in ["team_name", "game_date", "style_cluster_gmm", "style_confidence_gmm"] if c in cluster_data.columns]].head())
+
+
+# ==========================================================
+# 7. More complex model #2: PyTorch gradient-based autoencoder
+# ==========================================================
+# This is unsupervised because it does not use a target label.
+# It learns a compressed latent representation by reconstructing the input features.
+# After training, we cluster the learned latent representation with GMM.
+
+class BasketballAutoencoder(nn.Module):
+    def __init__(self, input_dim, latent_dim=2, hidden_dim=16):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, latent_dim),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, input_dim),
+        )
+
+    def forward(self, x):
+        z = self.encoder(x)
+        reconstructed = self.decoder(z)
+        return reconstructed, z
+
+
+def train_autoencoder(
+    X,
+    latent_dim=2,
+    hidden_dim=16,
+    epochs=500,
+    batch_size=64,
+    learning_rate=1e-3,
+    weight_decay=1e-4,
+    patience=40,
+    random_state=42,
+):
+    """Train an autoencoder using PyTorch gradients and return latent vectors."""
+    torch.manual_seed(random_state)
+    X = np.asarray(X, dtype=np.float32)
+
+    dataset = TensorDataset(torch.tensor(X, dtype=torch.float32))
+    loader = DataLoader(dataset, batch_size=min(batch_size, len(dataset)), shuffle=True)
+
+    model = BasketballAutoencoder(input_dim=X.shape[1], latent_dim=latent_dim, hidden_dim=hidden_dim)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    loss_fn = nn.MSELoss()
+
+    history = []
+    best_loss = np.inf
+    best_state = None
+    epochs_without_improvement = 0
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        total_loss = 0.0
+        total_rows = 0
+
+        for (batch_x,) in loader:
+            optimizer.zero_grad()
+            reconstructed, _ = model(batch_x)
+            loss = loss_fn(reconstructed, batch_x)
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item() * batch_x.size(0)
+            total_rows += batch_x.size(0)
+
+        epoch_loss = total_loss / total_rows
+        history.append(epoch_loss)
+
+        if epoch_loss < best_loss - 1e-7:
+            best_loss = epoch_loss
+            best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epochs_without_improvement >= patience:
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    model.eval()
+    with torch.no_grad():
+        X_tensor = torch.tensor(X, dtype=torch.float32)
+        reconstructed, latent = model(X_tensor)
+        final_reconstruction_loss = loss_fn(reconstructed, X_tensor).item()
+
+    return model, latent.numpy(), history, final_reconstruction_loss
+
+
+print("PyTorch autoencoder class and training function are ready.")
+
+
+# ==========================================================
+# 8. Train the PyTorch model and cluster its learned latent space with GMM
+# ==========================================================
+LATENT_DIM = 2
+HIDDEN_DIM = 12
+
+print("Training PyTorch autoencoder...")
+autoencoder_model, X_latent, train_loss_history, reconstruction_loss = train_autoencoder(
+    X_scaled,
+    latent_dim=LATENT_DIM,
+    hidden_dim=HIDDEN_DIM,
+    epochs=250,
+    batch_size=64,
+    learning_rate=1e-3,
+    weight_decay=1e-4,
+    patience=25,
+    random_state=RANDOM_STATE,
+)
+
+print("Autoencoder representation learned. Fitting GMM on latent space...")
+
+# Scale latent vectors before fitting GMM so one latent dimension does not dominate.
+latent_pipeline = DataPrepPipeline()
+X_latent_scaled = latent_pipeline.fit_transform(X_latent)
+
+latent_gmm_model, latent_gmm_scores = select_best_gmm(
+    X_latent_scaled,
+    component_range=range(2, 6),
+    random_state=RANDOM_STATE,
+)
+
+latent_gmm_labels = latent_gmm_model.predict(X_latent_scaled)
+latent_gmm_probabilities = latent_gmm_model.predict_proba(X_latent_scaled)
+
+cluster_data["latent_1"] = X_latent[:, 0]
+cluster_data["latent_2"] = X_latent[:, 1] if X_latent.shape[1] > 1 else 0.0
+cluster_data["style_cluster_torch_gmm"] = latent_gmm_labels
+cluster_data["style_confidence_torch_gmm"] = latent_gmm_probabilities.max(axis=1)
+
+print("PyTorch autoencoder training complete.")
+print("Epochs trained:", len(train_loss_history))
+print("Final reconstruction loss:", round(reconstruction_loss, 6))
+print("Best latent-space GMM component count by BIC:", latent_gmm_model.n_components)
+print("Average latent GMM confidence:", round(cluster_data["style_confidence_torch_gmm"].mean(), 4))
+
+display(latent_gmm_scores)
+display(cluster_data[[c for c in ["team_name", "game_date", "latent_1", "latent_2", "style_cluster_torch_gmm", "style_confidence_torch_gmm"] if c in cluster_data.columns]].head())
+
+
+# ==========================================================
+# 9. Evaluation helpers for unsupervised models
+# ==========================================================
+def safe_silhouette(X, labels):
+    labels = np.asarray(labels)
+    unique_labels = np.unique(labels)
+    if len(unique_labels) < 2 or len(unique_labels) >= len(labels):
+        return np.nan
+    return silhouette_score(X, labels)
+
+
+def safe_davies_bouldin(X, labels):
+    labels = np.asarray(labels)
+    unique_labels = np.unique(labels)
+    if len(unique_labels) < 2 or len(unique_labels) >= len(labels):
+        return np.nan
+    return davies_bouldin_score(X, labels)
+
+
+evaluation = pd.DataFrame([
+    {
+        "model": "Custom K-Means on original features",
+        "n_clusters": cluster_data["style_cluster_kmeans"].nunique(),
+        "silhouette_higher_is_better": safe_silhouette(X_scaled, cluster_data["style_cluster_kmeans"]),
+        "davies_bouldin_lower_is_better": safe_davies_bouldin(X_scaled, cluster_data["style_cluster_kmeans"]),
+        "extra_info": f"inertia={kmeans_custom.inertia_:.4f}",
+    },
+    {
+        "model": "GMM on original features",
+        "n_clusters": cluster_data["style_cluster_gmm"].nunique(),
+        "silhouette_higher_is_better": safe_silhouette(X_scaled, cluster_data["style_cluster_gmm"]),
+        "davies_bouldin_lower_is_better": safe_davies_bouldin(X_scaled, cluster_data["style_cluster_gmm"]),
+        "extra_info": f"bic={gmm_model.bic(X_scaled):.4f}; mean_confidence={cluster_data['style_confidence_gmm'].mean():.4f}",
+    },
+    {
+        "model": "PyTorch autoencoder + GMM on latent features",
+        "n_clusters": cluster_data["style_cluster_torch_gmm"].nunique(),
+        "silhouette_higher_is_better": safe_silhouette(X_latent_scaled, cluster_data["style_cluster_torch_gmm"]),
+        "davies_bouldin_lower_is_better": safe_davies_bouldin(X_latent_scaled, cluster_data["style_cluster_torch_gmm"]),
+        "extra_info": f"reconstruction_loss={reconstruction_loss:.6f}; latent_bic={latent_gmm_model.bic(X_latent_scaled):.4f}; mean_confidence={cluster_data['style_confidence_torch_gmm'].mean():.4f}",
+    },
+])
+
+print("Unsupervised model comparison:")
+display(evaluation)
+
+
+# ==========================================================
+# 10. Interpret clusters with basketball feature profiles
+# ==========================================================
+def cluster_profile(data, label_col, features):
+    profile = data.groupby(label_col)[features].mean().round(4)
+    profile.insert(0, "count", data.groupby(label_col).size())
+    return profile
+
+kmeans_profile = cluster_profile(cluster_data, "style_cluster_kmeans", features)
+gmm_profile = cluster_profile(cluster_data, "style_cluster_gmm", features)
+torch_gmm_profile = cluster_profile(cluster_data, "style_cluster_torch_gmm", features)
+
+print("Custom K-Means cluster profile:")
+display(kmeans_profile)
+
+print("GMM cluster profile:")
+display(gmm_profile)
+
+print("PyTorch Autoencoder + GMM cluster profile:")
+display(torch_gmm_profile)
+
+
+# ==========================================================
+# 11. Visualizations
+# ==========================================================
+# A. Training loss curve for the PyTorch gradient model
+plt.figure(figsize=(10, 5))
+plt.plot(train_loss_history)
+plt.title("PyTorch Autoencoder Training Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Mean Squared Reconstruction Loss")
+plt.grid(True, linestyle="--", alpha=0.7)
+plt.show()
+
+# B. Original feature-space comparison: K-Means vs GMM vs Torch+GMM labels
+plot_cols = ["style_cluster_kmeans", "style_cluster_gmm", "style_cluster_torch_gmm"]
+plot_titles = [
+    "Custom K-Means: Pace vs FG%",
+    "GMM: Pace vs FG%",
+    "PyTorch Autoencoder + GMM: Pace vs FG%",
+]
+
+for label_col, title in zip(plot_cols, plot_titles):
+    plt.figure(figsize=(10, 5))
+    sns.scatterplot(
+        data=cluster_data,
+        x="pace",
+        y="fg_percentage",
+        hue=label_col,
+        palette="viridis",
+        s=80,
+    )
+    plt.title(title)
+    plt.xlabel("Pace")
+    plt.ylabel("FG Percentage")
+    plt.grid(True, linestyle="--", alpha=0.7)
+    plt.legend(title=label_col)
+    plt.show()
+
+# C. Learned latent space from the PyTorch model
+plt.figure(figsize=(10, 5))
+sns.scatterplot(
+    data=cluster_data,
+    x="latent_1",
+    y="latent_2",
+    hue="style_cluster_torch_gmm",
+    size="style_confidence_torch_gmm",
+    palette="viridis",
+    sizes=(40, 160),
+)
+plt.title("Learned PyTorch Latent Space Clustered with GMM")
+plt.xlabel("Latent Dimension 1")
+plt.ylabel("Latent Dimension 2")
+plt.grid(True, linestyle="--", alpha=0.7)
+plt.show()
+
+
+# ==========================================================
+# 12. Final combined output and export
+# ==========================================================
+# This final table includes the original data plus all model outputs.
+# Recommended label for your final report: style_cluster_torch_gmm
+# because it combines gradient-based representation learning with probabilistic GMM clustering.
+
+preferred_columns = [
+    "team_name", "game_date",
+    *features,
+    "style_cluster_kmeans",
+    "style_cluster_gmm", "style_confidence_gmm",
+    "latent_1", "latent_2",
+    "style_cluster_torch_gmm", "style_confidence_torch_gmm",
+]
+
+existing_columns = [col for col in preferred_columns if col in cluster_data.columns]
+final_results = cluster_data[existing_columns].copy()
+
+output_csv = "basketball_unsupervised_cluster_results.csv"
+final_results.to_csv(output_csv, index=False)
+
+print("Final results saved to:", output_csv)
+print("Recommended final cluster column: style_cluster_torch_gmm")
+display(final_results.head(10))
